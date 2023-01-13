@@ -19,6 +19,7 @@ pub mod stackless_coroutine;
 mod switch;
 #[allow(clippy::module_inception)]
 mod task;
+pub mod resources;
 
 pub use crate::syscall::process::TaskInfo;
 use crate::{
@@ -128,8 +129,14 @@ pub fn exit_current_and_run_next(exit_code: i32) {
         process_inner.memory_set.recycle_data_pages();
         // drop file descriptors
         process_inner.fd_table.clear();
+		drop(process_inner);
     }
     // debug!("pcb dropped");
+	
+	// dealloc resources
+	let mut process_inner=process.inner_exclusive_access();
+	process_inner.release_tid_resources(tid);
+	drop(process_inner);
 
     // ++++++ release parent PCB
     drop(process);

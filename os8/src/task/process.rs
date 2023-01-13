@@ -1,5 +1,6 @@
 use super::id::RecycleAllocator;
 use super::{add_task, pid_alloc, PidHandle, TaskControlBlock};
+use super::resources::*;
 use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
 use crate::sync::{Condvar, Mutex, Semaphore, UPSafeCell};
@@ -20,6 +21,7 @@ pub struct ProcessControlBlock {
 // LAB5 HINT: you may add data structures for deadlock detection here
 pub struct ProcessControlBlockInner {
     pub is_zombie: bool,
+	pub is_deadlock_detect_enable: bool,
     pub memory_set: MemorySet,
     pub parent: Option<Weak<ProcessControlBlock>>,
     pub children: Vec<Arc<ProcessControlBlock>>,
@@ -28,7 +30,9 @@ pub struct ProcessControlBlockInner {
     pub tasks: Vec<Option<Arc<TaskControlBlock>>>,
     pub task_res_allocator: RecycleAllocator,
     pub mutex_list: Vec<Option<Arc<dyn Mutex>>>,
+	pub mutex_resources: Resources,	
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
+	pub semaphore_resources: Resources,
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
 }
 
@@ -54,6 +58,17 @@ impl ProcessControlBlockInner {
     pub fn dealloc_tid(&mut self, tid: usize) {
         self.task_res_allocator.dealloc(tid)
     }
+	
+	pub fn create_tid_resources(&mut self, tid: usize) {
+        self.mutex_resources.create_thread(tid);
+		self.semaphore_resources.create_thread(tid);
+    }
+
+    pub fn release_tid_resources(&mut self, tid: usize) {
+		self.mutex_resources.release_thread(tid);
+		self.semaphore_resources.create_thread(tid);
+    }
+	
 
     pub fn thread_count(&self) -> usize {
         self.tasks.len()
@@ -62,6 +77,18 @@ impl ProcessControlBlockInner {
     pub fn get_task(&self, tid: usize) -> Arc<TaskControlBlock> {
         self.tasks[tid].as_ref().unwrap().clone()
     }
+
+	pub fn enable_deadlock_detect(&mut self	){
+		self.is_deadlock_detect_enable = true;	
+	}
+	
+	pub fn disable_deadlock_detect(&mut self	){
+		self.is_deadlock_detect_enable = false;	
+	}
+
+	pub fn is_deadlock_detect_enabled(&self) -> bool{
+		self.is_deadlock_detect_enable
+	}
 }
 
 impl ProcessControlBlock {
@@ -80,6 +107,7 @@ impl ProcessControlBlock {
             inner: unsafe {
                 UPSafeCell::new(ProcessControlBlockInner {
                     is_zombie: false,
+					is_deadlock_detect_enable: false,
                     memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -95,7 +123,9 @@ impl ProcessControlBlock {
                     tasks: Vec::new(),
                     task_res_allocator: RecycleAllocator::new(),
                     mutex_list: Vec::new(),
+					mutex_resources: Resources::new(),
                     semaphore_list: Vec::new(),
+					semaphore_resources: Resources::new(),
                     condvar_list: Vec::new(),
                 })
             },
@@ -208,6 +238,7 @@ impl ProcessControlBlock {
             inner: unsafe {
                 UPSafeCell::new(ProcessControlBlockInner {
                     is_zombie: false,
+					is_deadlock_detect_enable: false,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
@@ -216,7 +247,9 @@ impl ProcessControlBlock {
                     tasks: Vec::new(),
                     task_res_allocator: RecycleAllocator::new(),
                     mutex_list: Vec::new(),
+					mutex_resources: Resources::new(),
                     semaphore_list: Vec::new(),
+					semaphore_resources: Resources::new(),
                     condvar_list: Vec::new(),
                 })
             },
@@ -262,6 +295,7 @@ impl ProcessControlBlock {
             inner: unsafe {
                 UPSafeCell::new(ProcessControlBlockInner {
                     is_zombie: false,
+					is_deadlock_detect_enable: false,
                     memory_set: memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -270,7 +304,9 @@ impl ProcessControlBlock {
                     tasks: Vec::new(),
                     task_res_allocator: RecycleAllocator::new(),
                     mutex_list: Vec::new(),
+					mutex_resources: Resources::new(),
                     semaphore_list: Vec::new(),
+					semaphore_resources: Resources::new(),
                     condvar_list: Vec::new(),
                 })
             },

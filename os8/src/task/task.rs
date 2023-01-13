@@ -6,6 +6,7 @@ use crate::trap::TrapContext;
 use crate::{mm::PhysPageNum, sync::UPSafeCell};
 use alloc::sync::{Arc, Weak};
 use core::cell::RefMut;
+use log::*;
 
 /// Task control block structure
 ///
@@ -61,8 +62,15 @@ impl TaskControlBlock {
     ) -> Self {
         let res = TaskUserRes::new(Arc::clone(&process), ustack_base, alloc_user_res);
         let trap_cx_ppn = res.trap_cx_ppn();
+        let tid = res.tid;
+		let pid=process.pid.0;
+		debug!("new pid:{} tid: {}", pid, tid);
         let kernel_stack = kstack_alloc();
         let kstack_top = kernel_stack.get_top();
+		// alloc resources
+        let mut process_inner = process.inner_exclusive_access();
+		process_inner.create_tid_resources(tid);
+        drop(process_inner);
         Self {
             process: Arc::downgrade(&process),
             kernel_stack,
